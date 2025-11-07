@@ -38,6 +38,30 @@
                     </archive>
                 </configuration>
             </plugin>
+            <plugin>
+                <groupId>org.panteleyev</groupId>
+                <artifactId>jpackage-maven-plugin</artifactId>
+                <version>1.6.5</version>
+                <configuration>
+                    <name>test_project</name>
+                    <appVersion>${project.version}</appVersion>
+                    <vendor>org.example</vendor>
+                    <destination>output</destination>
+                    <module>org.example/org.example.Main</module>
+                    <runtimeImage>output/runtime</runtimeImage>
+                    <javaOptions>
+                        <option>-Dfile.encoding=UTF-8</option>
+                    </javaOptions>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>win</id>
+                        <configuration>
+                            <type>APP_IMAGE</type>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
 

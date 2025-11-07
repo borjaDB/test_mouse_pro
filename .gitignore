@@ -50,5 +50,5 @@ hs_err_pid*
 ehthumbs.db
 Thumbs.db
 
-# Test output
-test/
+# Build output
+output/
