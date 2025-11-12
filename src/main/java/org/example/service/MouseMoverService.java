@@ -1,15 +1,23 @@
-package org.example;
+package org.example.service;
 
-import java.awt.*;
+import org.example.model.MovementConfig;
+import org.example.model.MovementType;
+import org.example.util.EventLogger;
+
 import javax.swing.*;
+import java.awt.*;
 import java.util.Random;
 
+/**
+ * Servicio que gestiona el movimiento automático del ratón.
+ */
 public class MouseMoverService implements Runnable {
     private final MouseMoverLogic logic;
     private final EventLogger logger;
     private volatile boolean running = false;
     private volatile boolean paused = false;
     private volatile Point lastUserPosition = null;
+    private volatile MovementType currentMovementType = MovementType.MEDIUM;
     private static final int USER_MOVE_THRESHOLD = 10;
 
     public MouseMoverService(MouseMoverLogic logic, EventLogger logger) {
@@ -25,6 +33,12 @@ public class MouseMoverService implements Runnable {
     public boolean isPaused() { return paused; }
     public Point getLastUserPosition() { return lastUserPosition; }
 
+    public MovementType getMovementType() { return currentMovementType; }
+    public void setMovementType(MovementType type) {
+        this.currentMovementType = type;
+        logger.logEvent("Tipo de movimiento cambiado a: " + type.getDisplayName());
+    }
+
     @Override
     public void run() {
         try {
@@ -35,13 +49,17 @@ public class MouseMoverService implements Runnable {
                     Thread.sleep(200);
                     continue;
                 }
-                int windowMs = 10_000;
-                int moveDurationMs = 600;
+
+                MovementConfig config = MovementConfig.getConfigForType(currentMovementType);
+
+                int windowMs = config.getWindowMs();
+                int moveDurationMs = config.getMoveDurationMs();
                 int idleBefore = random.nextInt(windowMs - moveDurationMs + 1);
                 int idleAfter = windowMs - moveDurationMs - idleBefore;
 
                 Point beforeWaitPosition = MouseInfo.getPointerInfo().getLocation();
                 lastUserPosition = beforeWaitPosition;
+
                 for (int i = 0; i < idleBefore / 100; i++) {
                     if (!running) return;
                     if (paused) { Thread.sleep(200); i--; continue; }
@@ -55,8 +73,10 @@ public class MouseMoverService implements Runnable {
                     }
                 }
                 Thread.sleep(idleBefore % 100);
+
                 if (!running) return;
                 if (paused) continue;
+
                 Point current = MouseInfo.getPointerInfo().getLocation();
                 if (logic.shouldSkipCycle(lastUserPosition, current, USER_MOVE_THRESHOLD)) {
                     lastUserPosition = current;
@@ -65,24 +85,13 @@ public class MouseMoverService implements Runnable {
                     continue;
                 }
 
-                logger.logEvent("El proceso automático continúa");
-                Point moveStartLocation = MouseInfo.getPointerInfo().getLocation();
-                int moveStartX = (int) moveStartLocation.getX();
-                int moveStartY = (int) moveStartLocation.getY();
+                logger.logEvent("El proceso automático continúa (" + currentMovementType.getDisplayName() + ")");
 
-                int amplitude = 8;
-                int steps = 30;
-                int delay = moveDurationMs / steps;
-                for (int i = 0; i < steps; i++) {
-                    if (!running) return;
-                    if (paused) { Thread.sleep(200); i--; continue; }
-                    double progress = (double) i / (steps - 1);
-                    double offset = Math.sin(Math.PI * progress);
-                    int x = moveStartX + (int) (amplitude * offset);
-                    robot.mouseMove(x, moveStartY);
-                    Thread.sleep(delay);
+                if (config.isUseRandomMovement()) {
+                    executeRandomMovement(robot, config);
+                } else {
+                    executeSinusoidalMovement(robot, config);
                 }
-                robot.mouseMove(moveStartX, moveStartY);
 
                 for (int i = 0; i < idleAfter / 100; i++) {
                     if (!running) return;
@@ -95,6 +104,46 @@ public class MouseMoverService implements Runnable {
             logger.logEvent("Error: " + e.getMessage());
             JOptionPane.showMessageDialog(null, "Error: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
+    }
+
+    private void executeRandomMovement(Robot robot, MovementConfig config) throws InterruptedException {
+        Point moveStartLocation = MouseInfo.getPointerInfo().getLocation();
+        int moveStartX = (int) moveStartLocation.getX();
+        int moveStartY = (int) moveStartLocation.getY();
+
+        int steps = config.getSteps();
+        int delay = config.getMoveDurationMs() / steps;
+
+        for (int i = 0; i < steps; i++) {
+            if (!running) return;
+            if (paused) { Thread.sleep(200); i--; continue; }
+
+            Point offset = logic.generateRandomOffset(config.getAmplitude());
+            int x = moveStartX + offset.x;
+            int y = moveStartY + offset.y;
+            robot.mouseMove(x, y);
+            Thread.sleep(delay);
+        }
+    }
+
+    private void executeSinusoidalMovement(Robot robot, MovementConfig config) throws InterruptedException {
+        Point moveStartLocation = MouseInfo.getPointerInfo().getLocation();
+        int moveStartX = (int) moveStartLocation.getX();
+        int moveStartY = (int) moveStartLocation.getY();
+
+        int steps = config.getSteps();
+        int delay = config.getMoveDurationMs() / steps;
+
+        for (int i = 0; i < steps; i++) {
+            if (!running) return;
+            if (paused) { Thread.sleep(200); i--; continue; }
+
+            double progress = (double) i / (steps - 1);
+            Point newPos = logic.calculateSinusoidalPosition(moveStartX, moveStartY, config.getAmplitude(), progress);
+            robot.mouseMove(newPos.x, newPos.y);
+            Thread.sleep(delay);
+        }
+        robot.mouseMove(moveStartX, moveStartY);
     }
 }
 
